@@ -1,0 +1,19 @@
+{
+  "name": "fiscalizador-art25bis-server",
+  "version": "1.0.0",
+  "description": "Backend con notificaciones push para el Fiscalizador Art. 25 bis",
+  "main": "server.js",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "web-push": "^3.6.7"
+  }
+}

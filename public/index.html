@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Copiloto de Ruta</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#12161A">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<header>
+  <div class="inner">
+    <div class="brand">
+      <span class="kicker">Y&amp;S GESTIÓN EN PREVENCIÓN DE RIESGOS</span>
+      <h1>🧭 Copiloto de Ruta</h1>
+    </div>
+    <div class="statusdot" id="statusdot"></div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- LOGIN -->
+  <div id="loginView" class="card">
+    <h2 id="loginGreeting">¡Hola! 👋</h2>
+    <p class="dim">Ingresa tu RUT y te acompañamos en tu viaje de hoy.</p>
+    <input id="rutInput" class="rutinput" placeholder="Ej: 12.345.678-9" autocomplete="off" inputmode="text">
+    <div id="rutError" class="error"></div>
+    <button class="act act-primary" id="btnLogin">Comenzar</button>
+    <div class="permnote" id="permnote"></div>
+  </div>
+
+  <!-- APP -->
+  <div id="appView" style="display:none;">
+
+    <p class="appgreeting" id="appGreeting">¡Hola de nuevo! 👋</p>
+
+    <div class="clockcard" id="clockcard">
+      <div class="clock-label" id="clocklabel">LISTO PARA VIAJAR</div>
+      <div class="clock-time" id="clocktime">00:00:00</div>
+      <div class="clock-sub" id="clocksub">Cuando quieras, presiona "Iniciar viaje"</div>
+      <div class="gauge"><div class="gauge-fill" id="gaugefill"></div></div>
+      <div class="gauge-marks"><span>0h</span><span>4:30</span><span>5h</span></div>
+    </div>
+
+    <div class="restbanner prevrest" id="prevRestBanner" style="display:none;">
+      <div class="rb-label">ANTES DE ESTE VIAJE DESCANSASTE</div>
+      <div class="rb-time" id="prevRestTime">--</div>
+      <div class="rb-sub" id="prevRestSub"></div>
+    </div>
+
+    <div class="restbanner" id="restbanner" style="display:none;">
+      <div class="rb-label">TE RECOMENDAMOS DESCANSAR HASTA LAS</div>
+      <div class="rb-time" id="restUntil">--:--</div>
+      <div class="rb-sub" id="restSub"></div>
+    </div>
+
+    <div class="actions" id="mainActions">
+      <button class="act act-primary" id="btnStart">🚗 Iniciar viaje</button>
+    </div>
+    <div class="actions" id="toggleActions" style="display:none;">
+      <button class="act act-secondary" id="btnToggle">☕ Pausa corta</button>
+    </div>
+    <div class="actions two" id="finalizeActions" style="display:none;">
+      <button class="act act-warn" id="btnEndTrip">🏁 Terminar viaje</button>
+      <button class="act act-danger" id="btnEndDay">🌙 Terminar jornada</button>
+    </div>
+    <p class="finalize-hint" id="finalizeHint" style="display:none;">
+      <b>Terminar viaje</b>: sigues trabajando hoy — te avisamos apenas puedas retomar.
+      <b>Terminar jornada</b>: por hoy es todo — no te molestamos con avisos mientras descansas.
+    </p>
+
+    <div class="section">
+      <div class="section-head"><h2>Tus viajes</h2><span class="count" id="histCount">0</span></div>
+      <div id="histList"></div>
+      <div class="empty" id="histEmpty">Aquí verás tus viajes apenas termines el primero 🙂</div>
+    </div>
+
+    <div class="section">
+      <button class="act act-secondary" id="btnLogout" style="opacity:.7;">Cambiar de conductor</button>
+    </div>
+
+    <footer>
+      Manejando: <b id="rutLabel"></b><br>
+      Aunque cierres la app, seguimos atentos<br>
+      para avisarte a tiempo. 🙌
+    </footer>
+  </div>
+
+</div>
+
+<div class="modal-bg" id="summaryModal">
+  <div class="modal">
+    <h3>¡Buen viaje! 🎉</h3>
+    <p>Aquí tienes el resumen.</p>
+    <div class="stat"><span>Tiempo manejando</span><b id="sumDriving">00:00:00</b></div>
+    <div class="stat rest"><span>Descanso que te mereces</span><b id="sumRest">00:00:00</b></div>
+    <div class="stat"><span>Descansa hasta las</span><b id="sumUntil">--:--</b></div>
+    <div class="stat"><span>Estado</span><b id="sumStatus">—</b></div>
+    <p class="sumnotice" id="sumNotice"></p>
+    <button class="act act-primary" id="btnCloseSummary">Cerrar</button>
+  </div>
+</div>
+
+<div class="modal-bg" id="insufficientModal">
+  <div class="modal">
+    <h3>😴 ¿Alcanzaste a descansar bien?</h3>
+    <p>Notamos que tu descanso fue más corto de lo recomendado (menos de 8 horas). Tómalo con calma y maneja con precaución hoy.</p>
+    <div class="stat"><span>Descansaste</span><b id="insufDuration" style="color:var(--danger);">--</b></div>
+    <div class="stat"><span>Tu jornada anterior terminó</span><b id="insufSince">--:--</b></div>
+    <button class="act act-danger" id="btnCloseInsufficient">Listo, gracias</button>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
