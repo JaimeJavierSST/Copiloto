@@ -21,6 +21,7 @@
   var rut = null;
   var trip = null;       // active/paused trip object from server
   var lastEnded = null;  // last ended trip (for rest banner)
+  var firstSyncDone = false; // true once we've confirmed state with the server at least once
   var tickTimer = null;
   var syncTimer = null;
 
@@ -168,11 +169,27 @@
     applyGreeting();
     el.loginView.style.display = 'none';
     el.appView.style.display = '';
-    refreshActive().then(function () {
-      startTick();
-      startSync();
+
+    // Arrancamos el reloj visual y la sincronización periódica de inmediato,
+    // sin esperar a que la primera consulta responda. Así, si el servidor
+    // está "despertando" (arranque en frío) y la primera consulta falla o
+    // se demora, igual vamos a reintentar solos en los próximos segundos
+    // en vez de quedarnos pegados mostrando "sin viaje".
+    // Ocultamos los botones de acción hasta confirmar el estado real con el
+    // servidor, para evitar que alguien presione "Iniciar viaje" por error
+    // mientras todavía estamos cargando (ej. servidor recién despertando).
+    el.mainActions.style.display = 'none';
+    el.toggleActions.style.display = 'none';
+    el.finalizeActions.style.display = 'none';
+    el.finalizeHint.style.display = 'none';
+
+    startTick();
+    startSync();
+    refreshActive().catch(function () {
+      // Reintento rápido si el primer intento falla (ej. servidor recién despertando).
+      setTimeout(function () { refreshActive().catch(function () {}); }, 4000);
     });
-    refreshHistory();
+    refreshHistory().catch(function () {});
   }
 
   function formatRutDisplay(r) {
@@ -237,6 +254,7 @@
     return api('/api/trip/active/' + rut).then(function (data) {
       trip = data.trip;
       lastEnded = data.lastEnded;
+      firstSyncDone = true;
       updateButtons();
       renderRestBanner();
       renderPrevRestBanner();
@@ -247,7 +265,7 @@
   }
   function startSync() {
     stopSync();
-    syncTimer = setInterval(refreshActive, 20000);
+    syncTimer = setInterval(function () { refreshActive().catch(function () {}); }, 20000);
   }
   function stopSync() { if (syncTimer) { clearInterval(syncTimer); syncTimer = null; } }
 
@@ -316,8 +334,13 @@
     el.statusdot.classList.remove('on', 'warn', 'danger');
 
     if (!trip) {
-      el.clocklabel.textContent = 'LISTO PARA VIAJAR';
-      el.clocksub.textContent = 'Cuando quieras, presiona "Iniciar viaje"';
+      if (!firstSyncDone) {
+        el.clocklabel.textContent = 'CONECTANDO…';
+        el.clocksub.textContent = 'Un momento, estamos cargando tu viaje…';
+      } else {
+        el.clocklabel.textContent = 'LISTO PARA VIAJAR';
+        el.clocksub.textContent = 'Cuando quieras, presiona "Iniciar viaje"';
+      }
     } else if (trip.status === 'paused') {
       el.clocklabel.textContent = '☕ TOMANDO UNA PAUSA';
       el.clocksub.innerHTML = 'Sin apuro · retoma cuando estés list@';
