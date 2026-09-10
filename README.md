@@ -61,15 +61,34 @@ avisos por hora.
 3. Guarda. Desde ese momento el sistema revisa y envía avisos de forma
    automática, sin que nadie tenga que abrir la app.
 
-### Nota sobre persistencia de datos
+### Base de datos persistente (Turso) — soluciona el problema del arranque en frío
 
-La base de datos (`data.sqlite`) vive en el disco del servidor gratuito, que
-**se reinicia vacío cada vez que rehaces un despliegue** (no en cada
-"dormida" normal, solo al publicar cambios de código). Para uso real con
-varios conductores y guardar el historial permanentemente, en algún momento
-conviene mover la base a un servicio externo gratuito como
-[Turso](https://turso.tech) o [Supabase](https://supabase.com) — puedo
-adaptar el código a cualquiera de los dos cuando quieras dar ese paso.
+Render free "duerme" el servicio tras ~15 min sin tráfico, y al despertar el
+disco local **no se conserva** — por eso se perdían los contadores. La
+solución es sacar la base de datos del disco de Render y ponerla en
+[Turso](https://turso.tech), gratis y siempre disponible:
+
+1. Entra a [turso.tech](https://turso.tech) y crea una cuenta gratis (puedes
+   entrar con tu cuenta de GitHub).
+2. Instala su CLI o usa el panel web para crear una base de datos nueva —
+   desde el dashboard: **Create Database**, ponle un nombre
+   (ej. `copiloto-de-ruta`), elige la región más cercana a Chile (por
+   ejemplo `gru` — São Paulo) y confirma.
+3. Dentro de esa base de datos, busca el botón para generar credenciales:
+   - **Database URL**: se ve así `libsql://copiloto-de-ruta-tuusuario.turso.io`
+   - **Auth Token**: un texto largo (créalo con el botón "Create Token" o
+     "Generate Token").
+4. En Render, ve a tu servicio → **Environment** → agrega:
+   - `TURSO_DATABASE_URL` = la URL del paso anterior
+   - `TURSO_AUTH_TOKEN` = el token del paso anterior
+5. Guarda — Render va a reiniciar el servicio solo. Desde ese momento, todos
+   los viajes y conductores se guardan en Turso, no en el disco de Render.
+   Puedes apagar y prender el servicio, o dejar que se duerma por
+   inactividad: los datos siempre van a estar ahí.
+
+Si no defines estas dos variables, la app sigue funcionando pero vuelve a
+usar un archivo local — bien para probar en tu computador, no para
+producción con varios conductores.
 
 ## Instalar la app en el teléfono de cada conductor
 

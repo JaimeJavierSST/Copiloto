@@ -64,16 +64,16 @@ function fmtClock(ts) {
 }
 
 // ---------- Driver registration + push subscription ----------
-app.post('/api/driver/register', (req, res) => {
+app.post('/api/driver/register', async (req, res) => {
   const { rut, subscription } = req.body;
   if (!rut || !validRut(rut)) return res.status(400).json({ error: 'RUT inválido' });
   const clean = cleanRut(rut);
-  const existing = db.prepare('SELECT rut FROM drivers WHERE rut = ?').get(clean);
+  const existing = await db.get('SELECT rut FROM drivers WHERE rut = ?', [clean]);
   if (existing) {
-    db.prepare('UPDATE drivers SET subscription = ? WHERE rut = ?').run(JSON.stringify(subscription || null), clean);
+    await db.run('UPDATE drivers SET subscription = ? WHERE rut = ?', [JSON.stringify(subscription || null), clean]);
   } else {
-    db.prepare('INSERT INTO drivers (rut, subscription, created_at) VALUES (?, ?, ?)')
-      .run(clean, JSON.stringify(subscription || null), Date.now());
+    await db.run('INSERT INTO drivers (rut, subscription, created_at) VALUES (?, ?, ?)',
+      [clean, JSON.stringify(subscription || null), Date.now()]);
   }
   res.json({ ok: true, rut: clean });
 });
@@ -83,26 +83,26 @@ app.get('/api/vapid-public-key', (req, res) => {
 });
 
 // ---------- Trip lifecycle ----------
-app.get('/api/trip/active/:rut', (req, res) => {
+app.get('/api/trip/active/:rut', async (req, res) => {
   const rut = cleanRut(req.params.rut);
-  const trip = db.prepare(`SELECT * FROM trips WHERE rut = ? AND status != 'ended' ORDER BY id DESC LIMIT 1`).get(rut);
-  const lastEnded = db.prepare(`SELECT * FROM trips WHERE rut = ? AND status = 'ended' ORDER BY id DESC LIMIT 1`).get(rut);
+  const trip = await db.get(`SELECT * FROM trips WHERE rut = ? AND status != 'ended' ORDER BY id DESC LIMIT 1`, [rut]);
+  const lastEnded = await db.get(`SELECT * FROM trips WHERE rut = ? AND status = 'ended' ORDER BY id DESC LIMIT 1`, [rut]);
   res.json({ trip: trip || null, lastEnded: lastEnded || null });
 });
 
-app.get('/api/trip/history/:rut', (req, res) => {
+app.get('/api/trip/history/:rut', async (req, res) => {
   const rut = cleanRut(req.params.rut);
-  const trips = db.prepare(`SELECT * FROM trips WHERE rut = ? AND status = 'ended' ORDER BY id DESC LIMIT 30`).all(rut);
+  const trips = await db.all(`SELECT * FROM trips WHERE rut = ? AND status = 'ended' ORDER BY id DESC LIMIT 30`, [rut]);
   res.json({ trips });
 });
 
 app.post('/api/trip/start', async (req, res) => {
   const rut = cleanRut(req.body.rut);
   const { lat, lng } = req.body;
-  const driver = db.prepare('SELECT * FROM drivers WHERE rut = ?').get(rut);
+  const driver = await db.get('SELECT * FROM drivers WHERE rut = ?', [rut]);
   if (!driver) return res.status(400).json({ error: 'Conductor no registrado' });
 
-  const existing = db.prepare(`SELECT id FROM trips WHERE rut = ? AND status != 'ended'`).get(rut);
+  const existing = await db.get(`SELECT id FROM trips WHERE rut = ? AND status != 'ended'`, [rut]);
   if (existing) return res.status(409).json({ error: 'Ya existe un viaje en curso' });
 
   const address = await reverseGeocode(lat, lng);
@@ -110,7 +110,7 @@ app.post('/api/trip/start', async (req, res) => {
 
   // Si el último cierre fue "fin de jornada", calculamos cuánto tiempo pasó
   // desde entonces hasta este nuevo inicio de viaje (descanso entre jornadas).
-  const lastEnded = db.prepare(`SELECT * FROM trips WHERE rut = ? AND status = 'ended' ORDER BY end_time DESC LIMIT 1`).get(rut);
+  const lastEnded = await db.get(`SELECT * FROM trips WHERE rut = ? AND status = 'ended' ORDER BY end_time DESC LIMIT 1`, [rut]);
   let restBeforeMs = null, restBeforeSince = null, restBeforeInsufficient = 0;
   if (lastEnded && lastEnded.end_type === 'jornada' && lastEnded.end_time) {
     restBeforeMs = now - lastEnded.end_time;
@@ -118,10 +118,10 @@ app.post('/api/trip/start', async (req, res) => {
     restBeforeInsufficient = restBeforeMs < MIN_REST_BETWEEN_MS ? 1 : 0;
   }
 
-  const info = db.prepare(`
+  const info = await db.run(`
     INSERT INTO trips (rut, status, start_time, accumulated_ms, segment_start, start_lat, start_lng, start_address, rest_before_ms, rest_before_since, rest_before_insufficient)
     VALUES (?, 'driving', ?, 0, ?, ?, ?, ?, ?, ?, ?)
-  `).run(rut, now, now, lat ?? null, lng ?? null, address, restBeforeMs, restBeforeSince, restBeforeInsufficient);
+  `, [rut, now, now, lat ?? null, lng ?? null, address, restBeforeMs, restBeforeSince, restBeforeInsufficient]);
 
   res.json({
     tripId: info.lastInsertRowid,
@@ -133,20 +133,20 @@ app.post('/api/trip/start', async (req, res) => {
   });
 });
 
-app.post('/api/trip/pause', (req, res) => {
+app.post('/api/trip/pause', async (req, res) => {
   const rut = cleanRut(req.body.rut);
-  const trip = db.prepare(`SELECT * FROM trips WHERE rut = ? AND status = 'driving'`).get(rut);
+  const trip = await db.get(`SELECT * FROM trips WHERE rut = ? AND status = 'driving'`, [rut]);
   if (!trip) return res.status(404).json({ error: 'No hay viaje en conducción' });
   const accumulated = trip.accumulated_ms + (Date.now() - trip.segment_start);
-  db.prepare(`UPDATE trips SET status='paused', accumulated_ms=?, segment_start=NULL WHERE id=?`).run(accumulated, trip.id);
+  await db.run(`UPDATE trips SET status='paused', accumulated_ms=?, segment_start=NULL WHERE id=?`, [accumulated, trip.id]);
   res.json({ ok: true, accumulatedMs: accumulated });
 });
 
-app.post('/api/trip/resume', (req, res) => {
+app.post('/api/trip/resume', async (req, res) => {
   const rut = cleanRut(req.body.rut);
-  const trip = db.prepare(`SELECT * FROM trips WHERE rut = ? AND status = 'paused'`).get(rut);
+  const trip = await db.get(`SELECT * FROM trips WHERE rut = ? AND status = 'paused'`, [rut]);
   if (!trip) return res.status(404).json({ error: 'No hay viaje pausado' });
-  db.prepare(`UPDATE trips SET status='driving', segment_start=? WHERE id=?`).run(Date.now(), trip.id);
+  await db.run(`UPDATE trips SET status='driving', segment_start=? WHERE id=?`, [Date.now(), trip.id]);
   res.json({ ok: true });
 });
 
@@ -154,7 +154,7 @@ app.post('/api/trip/end', async (req, res) => {
   const rut = cleanRut(req.body.rut);
   const { lat, lng } = req.body;
   const endType = req.body.endType === 'jornada' ? 'jornada' : 'viaje';
-  const trip = db.prepare(`SELECT * FROM trips WHERE rut = ? AND status != 'ended' ORDER BY id DESC LIMIT 1`).get(rut);
+  const trip = await db.get(`SELECT * FROM trips WHERE rut = ? AND status != 'ended' ORDER BY id DESC LIMIT 1`, [rut]);
   if (!trip) return res.status(404).json({ error: 'No hay viaje activo' });
 
   // Al finalizar se asume que el conductor comienza su descanso de inmediato;
@@ -164,11 +164,11 @@ app.post('/api/trip/end', async (req, res) => {
   const restEndsAt = Date.now() + restMs;
   const address = await reverseGeocode(lat, lng);
 
-  db.prepare(`
+  await db.run(`
     UPDATE trips SET status='ended', end_time=?, driving_ms=?, rest_ms=?, rest_ends_at=?,
       end_lat=?, end_lng=?, end_address=?, rest_notified=0, end_type=?
     WHERE id=?
-  `).run(Date.now(), drivingMs, restMs, restEndsAt, lat ?? null, lng ?? null, address, endType, trip.id);
+  `, [Date.now(), drivingMs, restMs, restEndsAt, lat ?? null, lng ?? null, address, endType, trip.id]);
 
   res.json({
     drivingMs, restMs, restEndsAt,
@@ -189,9 +189,9 @@ app.get('/api/tick', async (req, res) => {
   const results = [];
 
   // --- Active driving trips: hourly / 4:30 alert / 5h max ---
-  const driving = db.prepare(`SELECT * FROM trips WHERE status = 'driving'`).all();
+  const driving = await db.all(`SELECT * FROM trips WHERE status = 'driving'`);
   for (const trip of driving) {
-    const driver = db.prepare('SELECT * FROM drivers WHERE rut = ?').get(trip.rut);
+    const driver = await db.get('SELECT * FROM drivers WHERE rut = ?', [trip.rut]);
     if (!driver || !driver.subscription || driver.subscription === 'null') continue;
     const ms = currentDrivingMs(trip);
     const wholeHours = Math.floor(ms / HOUR_MS);
@@ -201,7 +201,7 @@ app.get('/api/tick', async (req, res) => {
         title: '🚗 Un mensaje de tu copiloto',
         body: `Llevas ${wholeHours} hora${wholeHours > 1 ? 's' : ''} manejando.`
       });
-      db.prepare('UPDATE trips SET notified_hours=? WHERE id=?').run(wholeHours, trip.id);
+      await db.run('UPDATE trips SET notified_hours=? WHERE id=?', [wholeHours, trip.id]);
       results.push(`hora ${wholeHours} -> ${trip.rut}`);
     }
     if (!trip.alert_fired && ms >= ALERT_THRESHOLD_MS) {
@@ -210,7 +210,7 @@ app.get('/api/tick', async (req, res) => {
         body: 'En 30 minutos cumplirás 5 horas de conducción 🙂',
         urgent: true
       });
-      db.prepare('UPDATE trips SET alert_fired=1 WHERE id=?').run(trip.id);
+      await db.run('UPDATE trips SET alert_fired=1 WHERE id=?', [trip.id]);
       results.push(`alerta4:30 -> ${trip.rut}`);
     }
     if (!trip.max_fired && ms >= MAX_THRESHOLD_MS) {
@@ -219,7 +219,7 @@ app.get('/api/tick', async (req, res) => {
         body: 'Ya llevas 5 horas manejando. Por tu seguridad, es momento de detenerte a descansar.',
         urgent: true
       });
-      db.prepare('UPDATE trips SET max_fired=1 WHERE id=?').run(trip.id);
+      await db.run('UPDATE trips SET max_fired=1 WHERE id=?', [trip.id]);
       results.push(`max5h -> ${trip.rut}`);
     }
   }
@@ -228,19 +228,19 @@ app.get('/api/tick', async (req, res) => {
   // Solo se avisa cuando fue "Finalizar viaje" (el conductor seguirá su jornada).
   // "Finalizar jornada" nunca dispara este aviso: el conductor ya terminó de trabajar
   // y no debe recibir una notificación mientras duerme.
-  const pendingRest = db.prepare(`
+  const pendingRest = await db.all(`
     SELECT * FROM trips WHERE status = 'ended' AND rest_notified = 0
       AND end_type = 'viaje' AND rest_ends_at <= ?
-  `).all(Date.now());
+  `, [Date.now()]);
   for (const trip of pendingRest) {
-    const driver = db.prepare('SELECT * FROM drivers WHERE rut = ?').get(trip.rut);
+    const driver = await db.get('SELECT * FROM drivers WHERE rut = ?', [trip.rut]);
     if (!driver || !driver.subscription || driver.subscription === 'null') continue;
     await sendPush(driver.subscription, {
       title: '✅ ¡Ya descansaste!',
       body: '¡Buen descanso! Ya puedes retomar tu viaje cuando gustes 🚗',
       urgent: true
     });
-    db.prepare('UPDATE trips SET rest_notified=1 WHERE id=?').run(trip.id);
+    await db.run('UPDATE trips SET rest_notified=1 WHERE id=?', [trip.id]);
     results.push(`descanso-cumplido -> ${trip.rut}`);
   }
 
